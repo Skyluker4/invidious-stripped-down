@@ -6,7 +6,6 @@ import Router from '@koa/router';
 import dns from 'dns';
 import QuickLRU from 'quick-lru';
 import { request } from 'undici';
-import crypto from 'crypto';
 
 dns.setDefaultResultOrder(process.env.DNS_ORDER || 'verbatim');
 
@@ -14,9 +13,6 @@ const router = new Router();
 const youtube = await Innertube.create();
 
 const hostname = process.env.HOST_PROXY;
-//const hostproxy = ".c." + hostname;
-const hostproxy = hostname;
-const hmac_key = process.env.HMAC_KEY;
 
 const timeExpireCache = 1000 * 60 * 60 * 1;
 const lru = new QuickLRU({ maxSize: process.env.KEYV_MAX_SIZE || 5000, maxAge: timeExpireCache });
@@ -50,9 +46,7 @@ async function getBasicVideoInfoDash(videoId) {
       .filter(i => i.mime_type.includes("audio/mp4" | "video/mp4"));
 
     basicVideoInfo.streaming_data.dashFile = await basicVideoInfo.toDash((url) => {
-      print(url.host)
-      url.host = url.host.split('.').slice(0, -2).join('.') + hostproxy;
-      print(url.host)
+      url.host = hostname;
       return url;
     });
   }
@@ -100,21 +94,14 @@ async function getBasicVideoInfoLatestVersion(videoId) {
   return basicVideoInfo;
 }
 
-router.get('/api/manifest/dash/id/:videoId', async (ctx, next) => {
+router.get('/api/manifest/dash/id/:videoId', async (ctx) => {
   const videoId = ctx.params.videoId;
   ctx.set("access-control-allow-origin", "*");
-
-  const hmac_key_computed = crypto.createHmac('sha1', hmac_key).update(videoId).digest('hex');
-
-  if (ctx.request.query.hmac_key != hmac_key_computed) {
-    ctx.status = 403;
-    return ctx.body = "Incorrect key";
-  }
 
   try {
     const basicVideoInfo = await getBasicVideoInfoDash(videoId);
     if (basicVideoInfo.playability_status.status !== "OK") {
-      throw ("The video can't be played: " + videoId + " due to reason: " + basicVideoInfo.playability_status.reason)
+      throw (new Error("The video can't be played: " + videoId + " due to reason: " + basicVideoInfo.playability_status.reason))
     }
     ctx.set("content-type", "application/dash+xml");
     ctx.body = basicVideoInfo.streaming_data.dashFile;
@@ -124,7 +111,7 @@ router.get('/api/manifest/dash/id/:videoId', async (ctx, next) => {
   }
 });
 
-router.get('/api/manifest/hls_variant/(.*)', async (ctx, next) => {
+router.get('/api/manifest/hls_variant/(.*)', async (ctx) => {
   ctx.set("access-control-allow-origin", "*");
   ctx.set("content-type", "application/x-mpegURL");
 
@@ -146,7 +133,7 @@ router.get('/api/manifest/hls_variant/(.*)', async (ctx, next) => {
   try {
     const basicVideoInfo = await getBasicVideoInfoLatestVersion(videoId);
     if (basicVideoInfo.playability_status.status !== "OK") {
-      throw ("The video can't be played: " + videoId + " due to reason: " + basicVideoInfo.playability_status.reason)
+      throw (new Error("The video can't be played: " + videoId + " due to reason: " + basicVideoInfo.playability_status.reason))
     }
 
     const hlsManifestUrl = basicVideoInfo.streaming_data.hls_manifest_url;
@@ -196,17 +183,10 @@ router.get('/api/manifest/hls_playlist/(.*)', async (ctx, next) => {
   }
 });
 
-router.get('/latest_version', async (ctx, next) => {
+router.get('/latest_version', async (ctx) => {
   const videoId = ctx.query.id;
   const itagId = ctx.query.itag;
   ctx.set("access-control-allow-origin", "*");
-
-  const hmac_key_computed = crypto.createHmac('sha1', hmac_key).update(videoId).digest('hex');
-
-  if (ctx.request.query.hmac_key != hmac_key_computed) {
-    ctx.status = 403;
-    return ctx.body = "Incorrect key";
-  }
 
   if (!videoId || !itagId) {
     return ctx.body = "Please specify the itag and video ID";
@@ -215,7 +195,7 @@ router.get('/latest_version', async (ctx, next) => {
   try {
     const basicVideoInfo = await getBasicVideoInfoLatestVersion(videoId);
     if (basicVideoInfo.playability_status.status !== "OK") {
-      throw ("The video can't be played: " + videoId + " due to reason: " + basicVideoInfo.playability_status.reason);
+      throw (new Error("The video can't be played: " + videoId + " due to reason: " + basicVideoInfo.playability_status.reason));
     }
     const streamingData = basicVideoInfo.streaming_data;
     const availableFormats = streamingData.formats.concat(streamingData.adaptive_formats);
@@ -225,12 +205,10 @@ router.get('/latest_version', async (ctx, next) => {
       return ctx.body = "No itag found.";
     }
     if (!selectedItagFormat[0].url) {
-      throw ("No URL, the video can't be played: " + videoId);
+      throw (new Error("No URL, the video can't be played: " + videoId));
     }
     let urlToRedirect = new URL(selectedItagFormat[0].url);
-    print(urlToRedirect.host)
-    urlToRedirect.host = urlToRedirect.host.split('.').slice(0, -2).join('.') + hostproxy;
-    print(urlToRedirect.host)
+    urlToRedirect.host = hostname;
     ctx.redirect(urlToRedirect)
   } catch (error) {
     console.log(error)
@@ -243,4 +221,20 @@ app
   .use(router.routes())
   .use(router.allowedMethods());
 
-app.listen(process.env.BIND_PORT || "3000", process.env.BIND_ADDRESS || "0.0.0.0");
+let bindAddress = process.env.BIND_ADDRESS || "0.0.0.0";
+let bindPort = process.env.BIND_PORT || "3000";
+
+const server = app.listen(bindPort, bindAddress, () => {
+  console.log(`Started proxy server on ${bindAddress}:${bindPort}`);
+});
+
+process.on('SIGINT', () => {
+  console.log('Received SIGINT. Shutting down gracefully...');
+  server.close(err => {
+    if (err) {
+      console.error(err);
+      process.exit(1);
+    }
+    process.exit(0);
+  });
+});
