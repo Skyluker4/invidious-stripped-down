@@ -50,7 +50,9 @@ async function getBasicVideoInfoDash(videoId) {
       .filter(i => i.mime_type.includes("audio/mp4" | "video/mp4"));
 
     basicVideoInfo.streaming_data.dashFile = await basicVideoInfo.toDash((url) => {
+      print(url.host)
       url.host = url.host.split('.').slice(0, -2).join('.') + hostproxy;
+      print(url.host)
       return url;
     });
   }
@@ -226,7 +228,9 @@ router.get('/latest_version', async (ctx, next) => {
       throw ("No URL, the video can't be played: " + videoId);
     }
     let urlToRedirect = new URL(selectedItagFormat[0].url);
+    print(urlToRedirect.host)
     urlToRedirect.host = urlToRedirect.host.split('.').slice(0, -2).join('.') + hostproxy;
+    print(urlToRedirect.host)
     ctx.redirect(urlToRedirect)
   } catch (error) {
     console.log(error)
