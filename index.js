@@ -4,7 +4,6 @@ import Keyv from 'keyv';
 const app = new Koa();
 import Router from '@koa/router';
 import dns from 'dns';
-import KeyvBrotli from '@keyv/compress-brotli';
 import QuickLRU from 'quick-lru';
 import { request } from 'undici';
 import crypto from 'crypto';
@@ -15,7 +14,8 @@ const router = new Router();
 const youtube = await Innertube.create();
 
 const hostname = process.env.HOST_PROXY;
-const hostproxy = ".c." + hostname;
+//const hostproxy = ".c." + hostname;
+const hostproxy = hostname;
 const hmac_key = process.env.HMAC_KEY;
 
 const timeExpireCache = 1000 * 60 * 60 * 1;
@@ -153,9 +153,9 @@ router.get('/api/manifest/hls_variant/(.*)', async (ctx, next) => {
       statusCode,
       body
     } = await request('https://www.youtube.com' + (new URL(hlsManifestUrl)).pathname);
-  
+
     let bodyText = await body.text();
-  
+
     if (statusCode == 200) {
       ctx.body = bodyText.replaceAll("www.youtube.com", hostname);
       ctx.status = 200;

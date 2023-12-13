@@ -23,8 +23,9 @@
     "@koa/router": "^12.0.1",
     "keyv": "^4.5.4",
     "koa": "^2.14.2",
+    "package.json": "^2.0.1",
     "quick-lru": "^7.0.0",
-    "youtubei.js": "^7.0.0",
-    "undici": "^5.28.1"
+    "undici": "^5.28.1",
+    "youtubei.js": "^7.0.0"
   }
 }
