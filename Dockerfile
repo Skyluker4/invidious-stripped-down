@@ -1,5 +1,5 @@
 # Use Alpine Linux as the base image
-FROM alpine:latest
+FROM alpine:3.19.0
 
 # Set the working directory
 WORKDIR /opt/invidious-stripped-down
